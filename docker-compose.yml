@@ -1,0 +1,55 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# docker-compose.yml — Fraud Detection API
+#
+# WHY docker-compose (not just docker run):
+#   docker run requires remembering port flags, volume mounts, and env vars
+#   every time. docker-compose codifies all of this in one file that is
+#   version-controlled and self-documenting.
+#   One command to start everything: docker-compose up --build
+#
+# Usage:
+#   docker-compose up --build    ← build image and start
+#   docker-compose up            ← start with existing image
+#   docker-compose down          ← stop and remove containers
+#   docker-compose logs -f       ← tail logs
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: "3.9"
+
+services:
+  fraud-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: fraud-detection-api
+
+    ports:
+      # host:container — maps localhost:8000 to container port 8000
+      - "8000:8000"
+
+    environment:
+      - MODELS_DIR=/app/models
+      - PORT=8000
+      # WHY PYTHONUNBUFFERED: ensures Python logs appear in docker-compose logs
+      # without being buffered — critical for real-time log monitoring
+      - PYTHONUNBUFFERED=1
+
+    volumes:
+      # WHY mount models as a volume (not just COPY in Dockerfile):
+      #   Allows updating the model artifact without rebuilding the image.
+      #   In production: mount from a model registry or S3.
+      #   In development: mount local ./models so a retrained model
+      #   takes effect immediately on container restart.
+      - ./models:/app/models:ro    # :ro = read-only for security
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+    restart: unless-stopped
+    # WHY unless-stopped: automatically restarts the container if it crashes,
+    # but not if it was deliberately stopped with docker-compose down.
